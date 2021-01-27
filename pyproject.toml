@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pigsqueeze"
-version = "1.0.0"
+version = "2.0.0"
 description = "A library to write and read arbitrary data to and from image files. You probably already know why you need it."
 authors = ["Tim Wedde <timwedde@icloud.com>"]
 license = "MIT"
