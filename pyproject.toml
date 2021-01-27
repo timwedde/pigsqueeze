@@ -9,7 +9,7 @@ repository = "https://github.com/timwedde/pigsqueeze"
 homepage = "https://github.com/timwedde/pigsqueeze"
 
 [tool.poetry.scripts]
-psz = "pigsqueeze.pigsqueeze:cli"
+psz = "pigsqueeze.cli:cli"
 
 [tool.poetry.dependencies]
 python = "^3.8"

@@ -1,38 +1,196 @@
 ## System ###
 import os
 import math
+import zlib
+from abc import abstractmethod
 from collections import defaultdict
 
 ### Binary Wrangling ###
-from plum.int.big import UInt8, UInt16
+from plum.int.big import UInt8, UInt16, UInt32
 
-### CLI Parsing ###
-import click
+
+def load_image(file):
+    if hasattr(file, "read"):
+        header_bytes = file.read(16)
+        file.seek(0)
+    elif isinstance(file, bytes):
+        header_bytes = file[:16]
+    elif os.path.isfile(file):
+        with open(file, "rb") as f:
+            header_bytes = f.read(16)
+    else:
+        raise ValueError("expected file object, file path as str, or bytes")
+
+    for handler in Image.__subclasses__():
+        if handler.tell(file, header_bytes):
+            return handler(file)
+
+    raise Exception("No handler for image!")
 
 
 class Image:
-
-    SEG_PREFIX = b"\xff"
-
-    # According to http://www.ozhiker.com/electronics/pjmt/jpeg_info/app_segments.html
-    FREE_SEGMENTS = [4, 5, 6, 7, 8, 9, 10, 11, 15]
-
-    def __init__(self, image_file):
-        self.segments = defaultdict(list)
-
-        if hasattr(image_file, "read"):
-            self.image_bytes = image_file.read()
-        elif isinstance(image_file, bytes):
-            self.image_bytes = image_file
-        elif os.path.isfile(image_file):
-            with open(image_file, "rb") as file_descriptor:
+    def __init__(self, file):
+        if hasattr(file, "read"):
+            self.image_bytes = file.read()
+        elif isinstance(file, bytes):
+            self.image_bytes = file
+        elif os.path.isfile(file):
+            with open(file, "rb") as file_descriptor:
                 self.image_bytes = file_descriptor.read()
         else:
             raise ValueError("expected file object, file path as str, or bytes")
 
-        self.parse_segments()
+        self.parse()
 
-    def parse_segments(self):
+    @classmethod
+    def tell(cls, file, header_bytes):
+        return header_bytes.startswith(cls.HEADER)
+
+    @abstractmethod
+    def parse(self):
+        pass
+
+
+class PNGImage(Image):
+
+    HEADER = b"\x89PNG\r\n\x1a\n"
+    PNG_CHUNKS = (
+        b"IHDR",
+        b"PLTE",
+        b"IDAT",
+        b"IEND",
+        b"tRNS",
+        b"cHRM",
+        b"gAMA",
+        b"iCCP",
+        b"sBIT",
+        b"sRGB",
+        b"iTXt",
+        b"tEXt",
+        b"zTXt",
+        b"bKGD",
+        b"hIST",
+        b"pHYs",
+        b"sPLT",
+        b"tIME",
+    )
+
+    def parse(self):
+        # Skip the PNG header
+        cursor = len(self.HEADER)
+
+        self.chunks = []
+        self.custom_chunks = {}
+
+        while cursor < len(self.image_bytes):
+            chunk_length = UInt32.unpack(self.image_bytes[cursor : cursor + 4])
+            cursor += 4
+            chunk_type = self.image_bytes[cursor : cursor + 4]
+            cursor += 4
+            chunk_data = self.image_bytes[cursor : cursor + chunk_length]
+            cursor += chunk_length
+            chunk_crc = UInt32.unpack(self.image_bytes[cursor : cursor + 4])
+            cursor += 4
+            if chunk_type in self.PNG_CHUNKS:
+                self.chunks.append((chunk_length, chunk_type, chunk_data, chunk_crc))
+            else:
+                self.custom_chunks[chunk_type] = (
+                    chunk_length,
+                    chunk_type,
+                    chunk_data,
+                    chunk_crc,
+                )
+
+    def read(self, chunk_type, identifier):
+        if chunk_type in self.PNG_CHUNKS:
+            raise Exception("Chunk name is a reserved PNG name!")
+
+        if len(chunk_type) != 4:
+            raise Exception(
+                "Chunk types must be a 4-letter word using only letters from A-z!"
+            )
+
+        if chunk_type[0].isupper():
+            raise Exception("Chunk types must start with a lowercase letter!")
+
+        identifier = f"{identifier}\x00".encode()
+        chunk_type = chunk_type.encode()
+
+        if chunk_type not in self.custom_chunks:
+            raise Exception(f"Chunk name {chunk_type} not found!")
+
+        chunk_length, chunk_type, chunk_data, chunk_crc = self.custom_chunks[chunk_type]
+
+        if identifier == b"\x00" or not chunk_data.startswith(identifier):
+            raise Exception("The identifier of this chunk differs!")
+
+        return chunk_data[len(identifier) :]
+
+    def write(self, chunk_type, identifier, data):
+        if chunk_type in self.PNG_CHUNKS:
+            raise Exception("Chunk type is a reserved PNG name!")
+
+        if len(chunk_type) != 4:
+            raise Exception(
+                "Chunk types must be a 4-letter word using only letters from A-z!"
+            )
+
+        if chunk_type[0].isupper():
+            raise Exception("Chunk types must start with a lowercase letter!")
+
+        identifier = f"{identifier}\x00".encode()
+        chunk_type = chunk_type.encode()
+
+        chunk_data = identifier + data
+        chunk_crc = zlib.crc32(chunk_type + chunk_data)
+
+        self.custom_chunks[chunk_type] = (
+            len(chunk_data),
+            chunk_type,
+            chunk_data,
+            chunk_crc,
+        )
+
+    def save(self, file):
+        new_bytes = self.HEADER
+
+        for chunk_length, chunk_type, chunk_data, chunk_crc in self.chunks[:1]:
+            new_bytes += UInt32.pack(chunk_length)
+            new_bytes += chunk_type
+            new_bytes += chunk_data
+            new_bytes += UInt32.pack(chunk_crc)
+
+        for _, (chunk_length, chunk_type, chunk_data, chunk_crc) in sorted(
+            self.custom_chunks.items()
+        ):
+            new_bytes += UInt32.pack(chunk_length)
+            new_bytes += chunk_type
+            new_bytes += chunk_data
+            new_bytes += UInt32.pack(chunk_crc)
+
+        for chunk_length, chunk_type, chunk_data, chunk_crc in self.chunks[1:]:
+            new_bytes += UInt32.pack(chunk_length)
+            new_bytes += chunk_type
+            new_bytes += chunk_data
+            new_bytes += UInt32.pack(chunk_crc)
+
+        if hasattr(file, "write"):
+            file.write(new_bytes)
+        else:
+            with open(file, "wb") as f:
+                f.write(new_bytes)
+
+
+class JPEGImage(Image):
+
+    HEADER = b"\xff\xd8"
+    SEG_PREFIX = b"\xff"
+    # According to http://www.ozhiker.com/electronics/pjmt/jpeg_info/app_segments.html
+    FREE_SEGMENTS = [4, 5, 6, 7, 8, 9, 10, 11, 15]
+
+    def parse(self):
+        self.segments = defaultdict(list)
+
         app_markers = tuple(
             chr(255).encode("latin-1") + chr(224 + i).encode("latin-1")
             for i in range(16)
@@ -147,33 +305,3 @@ class Image:
         else:
             with open(file, "wb") as f:
                 f.write(new_bytes)
-
-
-@click.group()
-def cli():
-    pass
-
-
-@cli.command()
-@click.argument("input_image", type=click.File("rb"))
-@click.argument("data", type=click.File("rb"))
-@click.argument("output_file", type=click.File("wb"))
-@click.option("-s", "--segment", type=int, required=True)
-@click.option("-i", "--identifier", type=str, required=True)
-def write(input_image, data, output_file, segment, identifier):
-    image = Image(input_image)
-    bytes_to_write = data.read()
-    image.write(segment, identifier, bytes_to_write)
-    image.save(output_file)
-
-
-@cli.command()
-@click.argument("input_image", type=click.File("rb"))
-@click.argument("output_file", type=click.File("wb"))
-@click.option("-s", "--segment", type=int, required=True)
-@click.option("-i", "--identifier", type=str, required=True)
-def read(input_image, output_file, segment, identifier):
-    image = Image(input_image)
-    result = image.read(segment, identifier)
-    if result:
-        output_file.write(result)

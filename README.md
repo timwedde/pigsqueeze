@@ -14,7 +14,7 @@ $ pip install pigsqueeze
 
 ## Usage
 ```bash
-Usage: psz write [OPTIONS] INPUT_IMAGE DATA OUTPUT_FILE
+Usage: psz read-jpg [OPTIONS] INPUT_IMAGE OUTPUT_FILE
 
 Options:
   -s, --segment INTEGER  [required]
@@ -23,7 +23,7 @@ Options:
 ```
 
 ```bash
-Usage: psz read [OPTIONS] INPUT_IMAGE OUTPUT_FILE
+Usage: psz write-jpg [OPTIONS] INPUT_IMAGE DATA OUTPUT_FILE
 
 Options:
   -s, --segment INTEGER  [required]
@@ -31,16 +31,34 @@ Options:
   --help                 Show this message and exit.
 ```
 
+```bash
+Usage: psz read-png [OPTIONS] INPUT_IMAGE OUTPUT_FILE
+
+Options:
+  -c, --chunk TEXT       [required]
+  -i, --identifier TEXT  [required]
+  --help                 Show this message and exit.
+```
+
+```bash
+Usage: psz write-png [OPTIONS] INPUT_IMAGE DATA OUTPUT_FILE
+
+Options:
+  -c, --chunk TEXT       [required]
+  -i, --identifier TEXT  [required]
+  --help                 Show this message and exit.
+```
+
 As a Python library:
 ```python
-from pigsqueeze import Image
+from pigsqueeze import load_image
 
 # Write some text to App segment 4 with identifier PSZ
-image = Image("path/to/image.jpg")
+image = load_image("path/to/image.jpg")
 image.write(4, "PSZ", b"Some bytes to save in the file.")
 image.save("path/to/output.jpg")
 
 # Retrieve the text from the modified image file
-image = Image("path/to/output.jpg")
+image = load_image("path/to/output.jpg")
 result = image.read(4, "PSZ")
 ```
