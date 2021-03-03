@@ -6,7 +6,7 @@ A library to write and read arbitrary data to and from image files. You probably
 
 pigsuqeeze is a command line tool as well as a Python library for easily writing arbitrary data to (and later retrieving it from) image files. Currently only JPEG and PNG are supported, but I'm open to add support for more file formats if they support this.
 
-For JPEG's, pigsqueeze stores binary data in one or more chunks of app-specific data segments as enabled by the JPEG specification. pigsqueeze automatically handles splitting large blobs of data across multiple chunks, since the limit per chunk is ~65KB. pigsqueeze's method allows for payload sizes of up ot ~15MB per segment. Multiple unused segments are available, so there is a theoretical limit of 135MB per image, which is probably plenty. If you need more, you should probably look at a different solution to your problem.
+For JPEG's, pigsqueeze stores binary data in one or more chunks of app-specific data segments as enabled by the JPEG specification. pigsqueeze automatically handles splitting large blobs of data across multiple chunks, since the limit per chunk is ~65KB. pigsqueeze's method allows for payload sizes of up to ~15MB per segment. Multiple unused segments are available, so there is a theoretical limit of 135MB per image, which is probably plenty. If you need more, you should probably look at a different solution to your problem.
 
 For PNG's, data is stored in out-of-spec chunks, which each have a limit of ~2GB. Because this is plenty large, pigsqueeze does not support chunk splitting for this format.
 
